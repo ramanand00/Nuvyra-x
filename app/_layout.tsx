@@ -2,6 +2,7 @@
 import React, { useEffect, useState } from "react";
 import { Stack } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { ThemeProvider } from "./contexts/ThemeContext";
 
 export default function RootLayout() {
   const [isLoggedIn, setIsLoggedIn] = useState<boolean | null>(null);
@@ -14,12 +15,14 @@ export default function RootLayout() {
     checkLogin();
   }, []);
 
-  if (isLoggedIn === null) return null; // show nothing while checking
+  if (isLoggedIn === null) return null;
 
   return (
-    <Stack
-      screenOptions={{ headerShown: false }}
-      initialRouteName={isLoggedIn ? "home" : "login"} // redirect based on login
-    />
+    <ThemeProvider>
+      <Stack
+        screenOptions={{ headerShown: false }}
+        initialRouteName={isLoggedIn ? "home" : "login"}
+      />
+    </ThemeProvider>
   );
 }

@@ -8,12 +8,13 @@ require('dotenv').config();
 
 const authRoutes = require('./routes/auth');
 const chatRoutes = require('./routes/chats');
+const userRoutes = require('./routes/users'); // Add this line
 
 const app = express();
 const server = http.createServer(app);
 
 // Configure CORS properly
-const allowedOrigins = process.env.CLIENT_URLS.split(',');
+const allowedOrigins = process.env.CLIENT_URLS ? process.env.CLIENT_URLS.split(',') : ['http://localhost:8081'];
 const io = socketIo(server, {
   cors: {
     origin: allowedOrigins,
@@ -31,6 +32,7 @@ app.use(express.json());
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/chats', chatRoutes);
+app.use('/api/users', userRoutes); // Add this line
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
