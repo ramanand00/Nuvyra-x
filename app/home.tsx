@@ -8,12 +8,14 @@ import {
   TouchableOpacity,
   Alert,
   ActivityIndicator,
-  RefreshControl
+  RefreshControl,
+  Image
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { API_BASE_URL } from "./config/constants";
+import { useTheme } from "./contexts/ThemeContext";
 
 interface Chat {
   _id: string;
@@ -21,11 +23,18 @@ interface Chat {
   lastMessage: {
     content: string;
     timestamp: string;
+    sender: {
+      _id: string;
+      name: string;
+      avatar?: string;
+    };
   };
+  updatedAt: string;
 }
 
 export default function Home() {
   const router = useRouter();
+  const { colors, actualTheme } = useTheme();
   const [chats, setChats] = useState<Chat[]>([]);
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<any>(null);
@@ -37,9 +46,13 @@ export default function Home() {
   }, []);
 
   const loadUserData = async () => {
-    const userData = await AsyncStorage.getItem("userData");
-    if (userData) {
-      setUser(JSON.parse(userData));
+    try {
+      const userData = await AsyncStorage.getItem("userData");
+      if (userData) {
+        setUser(JSON.parse(userData));
+      }
+    } catch (error) {
+      console.error("Error loading user data:", error);
     }
   };
 
@@ -47,6 +60,12 @@ export default function Home() {
     try {
       const token = await AsyncStorage.getItem("userToken");
       
+      if (!token) {
+        Alert.alert("Error", "Please login again");
+        router.replace("/login");
+        return;
+      }
+
       console.log("Fetching chats from:", `${API_BASE_URL}/chats`);
       
       const response = await fetch(`${API_BASE_URL}/chats`, {
@@ -55,7 +74,6 @@ export default function Home() {
         },
       });
 
-      // Check if we got a response
       if (!response) {
         throw new Error("No response from server");
       }
@@ -63,9 +81,17 @@ export default function Home() {
       const data = await response.json();
 
       if (response.ok) {
+        console.log("Chats fetched successfully:", data.chats.length);
         setChats(data.chats);
       } else {
-        Alert.alert("Error", data.message);
+        if (response.status === 401) {
+          await AsyncStorage.removeItem("userToken");
+          await AsyncStorage.removeItem("userData");
+          Alert.alert("Session Expired", "Please login again");
+          router.replace("/login");
+        } else {
+          Alert.alert("Error", data.message || "Failed to fetch chats");
+        }
       }
     } catch (error) {
       console.error("Fetch chats error:", error);
@@ -104,71 +130,107 @@ export default function Home() {
     router.push(`/chat/${chatId}`);
   };
 
+  const getOtherParticipant = (chat: Chat) => {
+    if (!user || !chat.participants) return null;
+    return chat.participants.find((p) => p._id !== user.id);
+  };
+
+  const formatTime = (timestamp: string) => {
+    if (!timestamp) return '';
+    
+    const messageDate = new Date(timestamp);
+    const now = new Date();
+    const diffInHours = (now.getTime() - messageDate.getTime()) / (1000 * 60 * 60);
+    
+    if (diffInHours < 24) {
+      return messageDate.toLocaleTimeString([], { 
+        hour: '2-digit', 
+        minute: '2-digit' 
+      });
+    } else if (diffInHours < 48) {
+      return 'Yesterday';
+    } else {
+      return messageDate.toLocaleDateString([], {
+        month: 'short',
+        day: 'numeric'
+      });
+    }
+  };
+
   const renderChatItem = ({ item }: { item: Chat }) => {
-    // Get the other participant (not the current user)
-    const otherParticipant = item.participants.find(
-      (p) => p._id !== user?.id
-    );
+    const otherParticipant = getOtherParticipant(item);
+    const lastMessage = item.lastMessage;
 
     return (
       <TouchableOpacity 
-        style={styles.chatItem} 
+        style={[styles.chatItem, { backgroundColor: colors.card, borderBottomColor: colors.border }]} 
         onPress={() => navigateToChat(item._id)}
       >
-        <View style={styles.avatar}>
-          <Ionicons name="person" size={24} color="#666" />
+        <View style={styles.avatarContainer}>
+          {otherParticipant?.avatar ? (
+            <Image
+              source={{ uri: otherParticipant.avatar }}
+              style={styles.avatar}
+            />
+          ) : (
+            <View style={[styles.avatar, { backgroundColor: colors.border }]}>
+              <Ionicons name="person" size={24} color={colors.text} />
+            </View>
+          )}
         </View>
+
         <View style={styles.chatInfo}>
-          <Text style={styles.chatName}>
+          <Text style={[styles.chatName, { color: colors.text }]} numberOfLines={1}>
             {otherParticipant?.name || "Unknown User"}
           </Text>
-          <Text style={styles.lastMessage} numberOfLines={1}>
-            {item.lastMessage?.content || "No messages yet"}
+          <Text style={[styles.lastMessage, { color: colors.text }]} numberOfLines={1}>
+            {lastMessage?.content || "No messages yet"}
           </Text>
         </View>
-        <Text style={styles.time}>
-          {item.lastMessage 
-            ? new Date(item.lastMessage.timestamp).toLocaleTimeString([], { 
-                hour: '2-digit', 
-                minute: '2-digit' 
-              })
-            : ''
-          }
-        </Text>
+
+        <View style={styles.chatMeta}>
+          <Text style={[styles.time, { color: colors.text }]}>
+            {formatTime(lastMessage?.timestamp || item.updatedAt)}
+          </Text>
+          {lastMessage && (
+            <View style={[styles.messageIndicator, { backgroundColor: colors.border }]}>
+              <Ionicons 
+                name={lastMessage.sender._id === user?.id ? "checkmark-done" : "chatbubble"} 
+                size={12} 
+                color={lastMessage.sender._id === user?.id ? colors.primary : colors.text} 
+              />
+            </View>
+          )}
+        </View>
       </TouchableOpacity>
     );
   };
 
   if (loading) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color="#4CAF50" />
+      <View style={[styles.center, { backgroundColor: colors.background }]}>
+        <ActivityIndicator size="large" color={colors.primary} />
+        <Text style={[styles.loadingText, { color: colors.text }]}>Loading your chats...</Text>
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Chats</Text>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <View style={[styles.header, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
+        <Text style={[styles.headerTitle, { color: colors.text }]}>Nuvyra</Text>
         <View style={styles.headerRight}>
           <TouchableOpacity 
             onPress={() => router.push('/search')} 
             style={styles.headerButton}
           >
-            <Ionicons name="search" size={24} color="#333" />
+            <Ionicons name="search" size={24} color={colors.text} />
           </TouchableOpacity>
           <TouchableOpacity 
-            onPress={() => router.push('/settings')} 
+            onPress={() => router.push('/profile')} 
             style={styles.headerButton}
           >
-            <Ionicons name="settings-outline" size={24} color="#333" />
-          </TouchableOpacity>
-          <TouchableOpacity 
-            onPress={handleLogout} 
-            style={styles.headerButton}
-          >
-            <Ionicons name="log-out-outline" size={24} color="#333" />
+            <Ionicons name="person" size={24} color={colors.text} />
           </TouchableOpacity>
         </View>
       </View>
@@ -181,18 +243,19 @@ export default function Home() {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            colors={["#4CAF50"]}
+            colors={[colors.primary]}
+            tintColor={colors.primary}
           />
         }
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
-            <Ionicons name="chatbubble-ellipses-outline" size={60} color="#ccc" />
-            <Text style={styles.emptyText}>No chats yet</Text>
-            <Text style={styles.emptySubText}>
+            <Ionicons name="chatbubble-ellipses-outline" size={60} color={colors.text} />
+            <Text style={[styles.emptyText, { color: colors.text }]}>No chats yet</Text>
+            <Text style={[styles.emptySubText, { color: colors.text }]}>
               Start a conversation by searching for people
             </Text>
             <TouchableOpacity 
-              style={styles.searchPeopleButton}
+              style={[styles.searchPeopleButton, { backgroundColor: colors.primary }]}
               onPress={() => router.push('/search')}
             >
               <Text style={styles.searchPeopleText}>Search People</Text>
@@ -202,36 +265,34 @@ export default function Home() {
       />
 
       <TouchableOpacity 
-        style={styles.newChatButton} 
+        style={[styles.newChatButton, { backgroundColor: colors.primary }]} 
         onPress={() => router.push('/search')}
       >
         <Ionicons name="chatbubble-ellipses" size={24} color="#fff" />
       </TouchableOpacity>
 
-      <TouchableOpacity 
-        style={styles.profileButton}
-        onPress={() => router.push('/profile')}
-      >
-        <Ionicons name="person" size={24} color="#fff" />
-      </TouchableOpacity>
+      
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fff" },
+  container: { flex: 1 },
   center: { 
     flex: 1, 
     justifyContent: "center", 
     alignItems: "center" 
   },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+  },
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    padding: 16,
+    padding: 25,
     borderBottomWidth: 1,
-    borderBottomColor: "#eee",
   },
   headerTitle: { 
     fontSize: 20, 
@@ -249,19 +310,20 @@ const styles = StyleSheet.create({
     alignItems: "center",
     padding: 16,
     borderBottomWidth: 1,
-    borderBottomColor: "#f0f0f0",
+  },
+  avatarContainer: {
+    marginRight: 16,
   },
   avatar: {
     width: 50,
     height: 50,
     borderRadius: 25,
-    backgroundColor: "#f0f0f0",
     justifyContent: "center",
     alignItems: "center",
-    marginRight: 16,
   },
   chatInfo: { 
-    flex: 1 
+    flex: 1,
+    marginRight: 12,
   },
   chatName: { 
     fontSize: 16, 
@@ -270,11 +332,20 @@ const styles = StyleSheet.create({
   },
   lastMessage: { 
     fontSize: 14, 
-    color: "#666" 
+  },
+  chatMeta: {
+    alignItems: "flex-end",
   },
   time: { 
-    fontSize: 12, 
-    color: "#999" 
+    fontSize: 12,
+    marginBottom: 4,
+  },
+  messageIndicator: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    justifyContent: "center",
+    alignItems: "center",
   },
   emptyContainer: { 
     flex: 1, 
@@ -285,20 +356,17 @@ const styles = StyleSheet.create({
   },
   emptyText: { 
     fontSize: 18, 
-    color: "#666",
     marginTop: 16,
     fontWeight: "bold",
   },
   emptySubText: {
     fontSize: 14,
-    color: "#999",
     marginTop: 8,
     textAlign: "center",
     marginHorizontal: 20,
   },
   searchPeopleButton: {
     marginTop: 20,
-    backgroundColor: "#4CAF50",
     paddingHorizontal: 20,
     paddingVertical: 12,
     borderRadius: 25,
@@ -314,7 +382,6 @@ const styles = StyleSheet.create({
     width: 60,
     height: 60,
     borderRadius: 30,
-    backgroundColor: "#4CAF50",
     justifyContent: "center",
     alignItems: "center",
     elevation: 5,
@@ -326,23 +393,5 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
   },
-  profileButton: {
-    position: "absolute",
-    left: 20,
-    bottom: 20,
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: "#2196F3",
-    justifyContent: "center",
-    alignItems: "center",
-    elevation: 5,
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-  },
+
 });

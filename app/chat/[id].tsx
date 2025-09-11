@@ -14,6 +14,7 @@ import {
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { useTheme } from "../contexts/ThemeContext";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { API_BASE_URL } from "../config/constants";
 
@@ -36,6 +37,7 @@ export default function ChatScreen() {
   const [chat, setChat] = useState<any>(null);
   const [user, setUser] = useState<any>(null);
   const flatListRef = useRef<FlatList>(null);
+  const { actualTheme, colors } = useTheme();
 
   useEffect(() => {
     loadUserData();
@@ -107,9 +109,17 @@ export default function ChatScreen() {
     return chat.participants.find((p: any) => p._id !== user.id);
   };
 
+  // Helper to get initials
+  const getInitials = (name: string) => {
+    if (!name) return "?";
+    const parts = name.trim().split(" ");
+    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+    return (parts[0][0] + parts[1][0]).toUpperCase();
+  };
+
   const renderMessage = ({ item }: { item: Message }) => {
     const isMyMessage = item.sender._id === user?.id;
-
+    const avatar = item.sender.avatar;
     return (
       <View
         style={[
@@ -118,24 +128,28 @@ export default function ChatScreen() {
         ]}
       >
         {!isMyMessage && (
-          <Image
-            source={{
-              uri: item.sender.avatar || "https://via.placeholder.com/40",
-            }}
-            style={styles.messageAvatar}
-          />
+          avatar ? (
+            <Image
+              source={{ uri: avatar }}
+              style={[styles.messageAvatar, { backgroundColor: colors.card }]}
+            />
+          ) : (
+            <View style={[styles.messageAvatar, { backgroundColor: colors.primary, justifyContent: 'center', alignItems: 'center' }]}> 
+              <Text style={{ color: '#fff', fontWeight: 'bold' }}>{getInitials(item.sender.name)}</Text>
+            </View>
+          )
         )}
         <View
           style={[
             styles.messageBubble,
-            isMyMessage ? styles.myBubble : styles.theirBubble,
+            isMyMessage ? { ...styles.myBubble, backgroundColor: colors.primary } : { ...styles.theirBubble, backgroundColor: colors.card },
           ]}
         >
           {!isMyMessage && (
-            <Text style={styles.senderName}>{item.sender.name}</Text>
+            <Text style={[styles.senderName, { color: colors.secondary }]}>{item.sender.name}</Text>
           )}
-          <Text style={styles.messageText}>{item.content}</Text>
-          <Text style={styles.messageTime}>
+          <Text style={[styles.messageText, { color: colors.text }]}>{item.content}</Text>
+          <Text style={[styles.messageTime, { color: colors.secondary }]}>
             {new Date(item.timestamp).toLocaleTimeString([], {
               hour: "2-digit",
               minute: "2-digit",
@@ -150,30 +164,34 @@ export default function ChatScreen() {
 
   return (
     <KeyboardAvoidingView
-      style={styles.container}
+      style={[styles.container, { backgroundColor: colors.background }]}
       behavior={Platform.OS === "ios" ? "padding" : "height"}
       keyboardVerticalOffset={90}
     >
-      <View style={styles.header}>
+      <View style={[styles.header, { borderBottomColor: colors.border }]}> 
         <TouchableOpacity onPress={() => router.back()}>
-          <Ionicons name="arrow-back" size={24} color="#333" />
+          <Ionicons name="arrow-back" size={24} color={colors.text} />
         </TouchableOpacity>
         {otherParticipant && (
           <>
-            <Image
-              source={{
-                uri: otherParticipant.avatar || "https://via.placeholder.com/40",
-              }}
-              style={styles.headerAvatar}
-            />
+            {otherParticipant.avatar ? (
+              <Image
+                source={{ uri: otherParticipant.avatar }}
+                style={[styles.headerAvatar, { backgroundColor: colors.card }]}
+              />
+            ) : (
+              <View style={[styles.headerAvatar, { backgroundColor: colors.primary, justifyContent: 'center', alignItems: 'center' }]}> 
+                <Text style={{ color: '#fff', fontWeight: 'bold' }}>{getInitials(otherParticipant.name)}</Text>
+              </View>
+            )}
             <View style={styles.headerInfo}>
-              <Text style={styles.headerName}>{otherParticipant.name}</Text>
-              <Text style={styles.headerStatus}>Online</Text>
+              <Text style={[styles.headerName, { color: colors.text }]}>{otherParticipant.name}</Text>
+              <Text style={[styles.headerStatus, { color: colors.success }]}>Online</Text>
             </View>
           </>
         )}
         <TouchableOpacity>
-          <Ionicons name="ellipsis-vertical" size={24} color="#333" />
+          <Ionicons name="ellipsis-vertical" size={24} color={colors.text} />
         </TouchableOpacity>
       </View>
 
@@ -189,16 +207,17 @@ export default function ChatScreen() {
         onLayout={() => flatListRef.current?.scrollToEnd({ animated: true })}
       />
 
-      <View style={styles.inputContainer}>
+      <View style={[styles.inputContainer, { borderTopColor: colors.border }]}> 
         <TextInput
-          style={styles.input}
+          style={[styles.input, { borderColor: colors.border, color: colors.text }]}
           placeholder="Type a message..."
+          placeholderTextColor={colors.secondary}
           value={newMessage}
           onChangeText={setNewMessage}
           multiline
           maxLength={500}
         />
-        <TouchableOpacity style={styles.sendButton} onPress={sendMessage}>
+        <TouchableOpacity style={[styles.sendButton, { backgroundColor: colors.primary }]} onPress={sendMessage}>
           <Ionicons name="send" size={20} color="#fff" />
         </TouchableOpacity>
       </View>
@@ -207,24 +226,22 @@ export default function ChatScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fff" },
+  container: { flex: 1 },
   header: {
     flexDirection: "row",
     alignItems: "center",
-    padding: 16,
+    padding: 30,
     borderBottomWidth: 1,
-    borderBottomColor: "#eee",
   },
   headerAvatar: {
     width: 40,
     height: 40,
     borderRadius: 20,
     marginHorizontal: 12,
-    backgroundColor: "#f0f0f0",
   },
   headerInfo: { flex: 1 },
   headerName: { fontSize: 16, fontWeight: "bold" },
-  headerStatus: { fontSize: 12, color: "#666" },
+  headerStatus: { fontSize: 12 },
   messagesContainer: { padding: 16 },
   messageContainer: {
     flexDirection: "row",
@@ -238,7 +255,6 @@ const styles = StyleSheet.create({
     height: 32,
     borderRadius: 16,
     marginRight: 8,
-    backgroundColor: "#f0f0f0",
   },
   messageBubble: {
     maxWidth: "70%",
@@ -246,40 +262,33 @@ const styles = StyleSheet.create({
     borderRadius: 18,
   },
   myBubble: {
-    backgroundColor: "#4CAF50",
     borderBottomRightRadius: 4,
   },
   theirBubble: {
-    backgroundColor: "#f0f0f0",
     borderBottomLeftRadius: 4,
   },
   senderName: {
     fontSize: 12,
     fontWeight: "bold",
     marginBottom: 4,
-    color: "#666",
   },
   messageText: {
     fontSize: 16,
-    color: "#000",
     marginBottom: 4,
   },
   messageTime: {
     fontSize: 10,
-    color: "#666",
     alignSelf: "flex-end",
   },
   inputContainer: {
     flexDirection: "row",
     padding: 16,
     borderTopWidth: 1,
-    borderTopColor: "#eee",
     alignItems: "center",
   },
   input: {
     flex: 1,
     borderWidth: 1,
-    borderColor: "#ddd",
     borderRadius: 25,
     paddingHorizontal: 16,
     paddingVertical: 10,
@@ -290,7 +299,6 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: "#4CAF50",
     justifyContent: "center",
     alignItems: "center",
   },
