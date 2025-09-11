@@ -11,6 +11,8 @@ import {
   Platform,
   Alert,
   Image,
+  StatusBar,
+  SafeAreaView,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -36,6 +38,7 @@ export default function ChatScreen() {
   const [newMessage, setNewMessage] = useState("");
   const [chat, setChat] = useState<any>(null);
   const [user, setUser] = useState<any>(null);
+  const [isSending, setIsSending] = useState(false);
   const flatListRef = useRef<FlatList>(null);
   const { actualTheme, colors } = useTheme();
 
@@ -74,8 +77,9 @@ export default function ChatScreen() {
   };
 
   const sendMessage = async () => {
-    if (!newMessage.trim()) return;
+    if (!newMessage.trim() || isSending) return;
 
+    setIsSending(true);
     try {
       const token = await AsyncStorage.getItem("userToken");
       const response = await fetch(`${API_BASE_URL}/chats/${id}/messages`, {
@@ -101,6 +105,8 @@ export default function ChatScreen() {
       }
     } catch (error) {
       Alert.alert("Error", "Failed to send message");
+    } finally {
+      setIsSending(false);
     }
   };
 
@@ -120,6 +126,7 @@ export default function ChatScreen() {
   const renderMessage = ({ item }: { item: Message }) => {
     const isMyMessage = item.sender._id === user?.id;
     const avatar = item.sender.avatar;
+    
     return (
       <View
         style={[
@@ -135,21 +142,35 @@ export default function ChatScreen() {
             />
           ) : (
             <View style={[styles.messageAvatar, { backgroundColor: colors.primary, justifyContent: 'center', alignItems: 'center' }]}> 
-              <Text style={{ color: '#fff', fontWeight: 'bold' }}>{getInitials(item.sender.name)}</Text>
+              <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 12 }}>
+                {getInitials(item.sender.name)}
+              </Text>
             </View>
           )
         )}
         <View
           style={[
             styles.messageBubble,
-            isMyMessage ? { ...styles.myBubble, backgroundColor: colors.primary } : { ...styles.theirBubble, backgroundColor: colors.card },
+            isMyMessage ? 
+              { backgroundColor: colors.primary, marginLeft: 'auto' } : 
+              { backgroundColor: colors.card }
           ]}
         >
           {!isMyMessage && (
-            <Text style={[styles.senderName, { color: colors.secondary }]}>{item.sender.name}</Text>
+            <Text style={[styles.senderName, { color: colors.secondary }]}>
+              {item.sender.name}
+            </Text>
           )}
-          <Text style={[styles.messageText, { color: colors.text }]}>{item.content}</Text>
-          <Text style={[styles.messageTime, { color: colors.secondary }]}>
+          <Text style={[
+            styles.messageText, 
+            { color: isMyMessage ? '#fff' : colors.text }
+          ]}>
+            {item.content}
+          </Text>
+          <Text style={[
+            styles.messageTime, 
+            { color: isMyMessage ? 'rgba(255,255,255,0.7)' : colors.secondary }
+          ]}>
             {new Date(item.timestamp).toLocaleTimeString([], {
               hour: "2-digit",
               minute: "2-digit",
@@ -163,17 +184,21 @@ export default function ChatScreen() {
   const otherParticipant = getOtherParticipant();
 
   return (
-    <KeyboardAvoidingView
-      style={[styles.container, { backgroundColor: colors.background }]}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-      keyboardVerticalOffset={90}
-    >
-      <View style={[styles.header, { borderBottomColor: colors.border }]}> 
-        <TouchableOpacity onPress={() => router.back()}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+      <StatusBar barStyle={actualTheme === 'dark' ? 'light-content' : 'dark-content'} />
+      
+      {/* Header */}
+      <View style={[styles.header, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
+        <TouchableOpacity 
+          onPress={() => router.back()} 
+          style={styles.backButton}
+          hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
+        >
           <Ionicons name="arrow-back" size={24} color={colors.text} />
         </TouchableOpacity>
+        
         {otherParticipant && (
-          <>
+          <View style={styles.headerContent}>
             {otherParticipant.avatar ? (
               <Image
                 source={{ uri: otherParticipant.avatar }}
@@ -181,75 +206,153 @@ export default function ChatScreen() {
               />
             ) : (
               <View style={[styles.headerAvatar, { backgroundColor: colors.primary, justifyContent: 'center', alignItems: 'center' }]}> 
-                <Text style={{ color: '#fff', fontWeight: 'bold' }}>{getInitials(otherParticipant.name)}</Text>
+                <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 14 }}>
+                  {getInitials(otherParticipant.name)}
+                </Text>
               </View>
             )}
             <View style={styles.headerInfo}>
-              <Text style={[styles.headerName, { color: colors.text }]}>{otherParticipant.name}</Text>
-              <Text style={[styles.headerStatus, { color: colors.success }]}>Online</Text>
+              <Text style={[styles.headerName, { color: colors.text }]}>
+                {otherParticipant.name}
+              </Text>
+              <Text style={[styles.headerStatus, { color: colors.success }]}>
+                Online
+              </Text>
             </View>
-          </>
+          </View>
         )}
-        <TouchableOpacity>
-          <Ionicons name="ellipsis-vertical" size={24} color={colors.text} />
+        
+        <TouchableOpacity 
+          style={styles.menuButton}
+          hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
+        >
+          <Ionicons name="ellipsis-vertical" size={20} color={colors.text} />
         </TouchableOpacity>
       </View>
 
+      {/* Messages List */}
       <FlatList
         ref={flatListRef}
-        data={messages}
+        data={[...messages].reverse()}
         renderItem={renderMessage}
         keyExtractor={(item) => item._id}
         contentContainerStyle={styles.messagesContainer}
-        onContentSizeChange={() =>
-          flatListRef.current?.scrollToEnd({ animated: true })
-        }
-        onLayout={() => flatListRef.current?.scrollToEnd({ animated: true })}
+        inverted
+        showsVerticalScrollIndicator={false}
+        keyboardDismissMode="interactive"
+        keyboardShouldPersistTaps="handled"
       />
 
-      <View style={[styles.inputContainer, { borderTopColor: colors.border }]}> 
-        <TextInput
-          style={[styles.input, { borderColor: colors.border, color: colors.text }]}
-          placeholder="Type a message..."
-          placeholderTextColor={colors.secondary}
-          value={newMessage}
-          onChangeText={setNewMessage}
-          multiline
-          maxLength={500}
-        />
-        <TouchableOpacity style={[styles.sendButton, { backgroundColor: colors.primary }]} onPress={sendMessage}>
-          <Ionicons name="send" size={20} color="#fff" />
-        </TouchableOpacity>
-      </View>
-    </KeyboardAvoidingView>
+      {/* Input Container - Fixed at bottom */}
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
+        style={[styles.inputWrapper, { backgroundColor: colors.card }]}
+      >
+        <View style={styles.inputContainer}>
+          <TextInput
+            style={[
+              styles.input, 
+              { 
+                backgroundColor: colors.background,
+                borderColor: colors.border, 
+                color: colors.text 
+              }
+            ]}
+            placeholder="Type a message..."
+            placeholderTextColor={colors.secondary + '80'}
+            value={newMessage}
+            onChangeText={setNewMessage}
+            multiline
+            maxLength={500}
+            textAlignVertical="center"
+            enablesReturnKeyAutomatically
+            returnKeyType="send"
+            onSubmitEditing={sendMessage}
+          />
+          <TouchableOpacity 
+            style={[
+              styles.sendButton, 
+              { 
+                backgroundColor: newMessage.trim() ? colors.primary : colors.secondary + '40',
+                opacity: newMessage.trim() ? 1 : 0.6
+              }
+            ]} 
+            onPress={sendMessage}
+            disabled={!newMessage.trim() || isSending}
+          >
+            {isSending ? (
+              <Ionicons name="time-outline" size={20} color="#fff" />
+            ) : (
+              <Ionicons name="send" size={20} color="#fff" />
+            )}
+          </TouchableOpacity>
+        </View>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
+  container: { 
+    flex: 1,
+  },
   header: {
     flexDirection: "row",
     alignItems: "center",
-    padding: 30,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     borderBottomWidth: 1,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+  },
+  backButton: {
+    padding: 4,
+    marginRight: 8,
+  },
+  headerContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
   },
   headerAvatar: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    marginHorizontal: 12,
+    marginRight: 12,
   },
-  headerInfo: { flex: 1 },
-  headerName: { fontSize: 16, fontWeight: "bold" },
-  headerStatus: { fontSize: 12 },
-  messagesContainer: { padding: 16 },
+  headerInfo: { 
+    flex: 1,
+  },
+  headerName: { 
+    fontSize: 16, 
+    fontWeight: "bold",
+    marginBottom: 2,
+  },
+  headerStatus: { 
+    fontSize: 12,
+  },
+  menuButton: {
+    padding: 4,
+  },
+  messagesContainer: { 
+    padding: 16,
+    paddingBottom: 8,
+  },
   messageContainer: {
     flexDirection: "row",
-    marginBottom: 16,
+    marginBottom: 12,
     alignItems: "flex-end",
   },
-  myMessage: { justifyContent: "flex-end" },
-  theirMessage: { justifyContent: "flex-start" },
+  myMessage: { 
+    justifyContent: "flex-end",
+  },
+  theirMessage: { 
+    justifyContent: "flex-start",
+  },
   messageAvatar: {
     width: 32,
     height: 32,
@@ -257,43 +360,48 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   messageBubble: {
-    maxWidth: "70%",
+    maxWidth: "75%",
     padding: 12,
     borderRadius: 18,
-  },
-  myBubble: {
-    borderBottomRightRadius: 4,
-  },
-  theirBubble: {
-    borderBottomLeftRadius: 4,
+    marginHorizontal: 4,
   },
   senderName: {
     fontSize: 12,
-    fontWeight: "bold",
+    fontWeight: "600",
     marginBottom: 4,
+    opacity: 0.8,
   },
   messageText: {
     fontSize: 16,
+    lineHeight: 20,
     marginBottom: 4,
   },
   messageTime: {
     fontSize: 10,
     alignSelf: "flex-end",
+    marginTop: 2,
+    opacity: 0.7,
+  },
+  inputWrapper: {
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(0,0,0,0.1)',
+    padding: 16,
+    paddingBottom: Platform.OS === 'ios' ? 25 : 16,
   },
   inputContainer: {
     flexDirection: "row",
-    padding: 16,
-    borderTopWidth: 1,
     alignItems: "center",
+    gap: 12,
   },
   input: {
     flex: 1,
     borderWidth: 1,
     borderRadius: 25,
     paddingHorizontal: 16,
-    paddingVertical: 10,
-    marginRight: 10,
+    paddingVertical: Platform.OS === 'ios' ? 12 : 8,
+    fontSize: 16,
     maxHeight: 100,
+    minHeight: 44,
   },
   sendButton: {
     width: 44,
@@ -301,5 +409,10 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     justifyContent: "center",
     alignItems: "center",
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
   },
 });

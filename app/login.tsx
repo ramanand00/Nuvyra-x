@@ -10,6 +10,7 @@ export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false); // NEW: Toggle password visibility
 
   const handleLogin = async () => {
     if (!email || !password) {
@@ -58,6 +59,7 @@ export default function Login() {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Login</Text>
+
       <TextInput
         style={styles.input}
         placeholder="Email"
@@ -66,13 +68,25 @@ export default function Login() {
         autoCapitalize="none"
         keyboardType="email-address"
       />
-      <TextInput
-        style={styles.input}
-        placeholder="Password"
-        value={password}
-        onChangeText={setPassword}
-        secureTextEntry
-      />
+
+      <View style={styles.passwordContainer}>
+        <TextInput
+          style={[styles.input, { flex: 1 }]}
+          placeholder="Password"
+          value={password}
+          onChangeText={setPassword}
+          secureTextEntry={!showPassword} // Toggle password visibility
+        />
+        <TouchableOpacity
+          style={styles.showPasswordButton}
+          onPress={() => setShowPassword(prev => !prev)}
+        >
+          <Text style={styles.showPasswordText}>
+            {showPassword ? "Hide" : "Show"}
+          </Text>
+        </TouchableOpacity>
+      </View>
+
       <TouchableOpacity 
         style={[styles.button, loading && styles.disabledButton]} 
         onPress={handleLogin}
@@ -94,7 +108,10 @@ const styles = StyleSheet.create({
   container: { flex: 1, justifyContent: "center", padding: 20 },
   title: { fontSize: 26, fontWeight: "bold", marginBottom: 20, textAlign: "center" },
   input: { borderWidth: 1, borderColor: "#ccc", padding: 12, borderRadius: 10, marginBottom: 15 },
-  button: { backgroundColor: "#4CAF50", padding: 15, borderRadius: 10, alignItems: "center" },
+  passwordContainer: { flexDirection: "row", alignItems: "center", position: "relative" },
+  showPasswordButton: { paddingHorizontal: 10, justifyContent: "center" },
+  showPasswordText: { color: "#007BFF", fontWeight: "bold" },
+  button: { backgroundColor: "#4CAF50", padding: 15, borderRadius: 10, alignItems: "center", marginTop: 10 },
   disabledButton: { backgroundColor: "#cccccc" },
   buttonText: { color: "#fff", fontSize: 18, fontWeight: "bold" },
   signupButton: { marginTop: 15, alignItems: "center" },
